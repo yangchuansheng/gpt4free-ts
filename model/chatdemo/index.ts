@@ -3,28 +3,22 @@ import {AxiosInstance, AxiosRequestConfig, CreateAxiosDefaults} from "axios";
 import {CreateAxiosProxy} from "../../utils/proxyAgent";
 import es from "event-stream";
 import {ErrorData, Event, EventStream, MessageData, parseJSON} from "../../utils";
-
-interface Message {
-    role: string;
-    content: string;
-}
+import {v4} from "uuid";
+import moment from "moment";
 
 interface RealReq {
-    messages: Message[];
-    stream: boolean;
-    model: string;
-    temperature: number;
-    presence_penalty: number;
+    question: string;
+    chat_id: string;
+    timestamp: number;
 }
 
-
-export class Mcbbs extends Chat {
+export class ChatDemo extends Chat {
     private client: AxiosInstance;
 
     constructor(options?: ChatOptions) {
         super(options);
         this.client = CreateAxiosProxy({
-            baseURL: 'https://ai.mcbbs.gq/api',
+            baseURL: 'https://chat.chatgptdemo.net',
             headers: {
                 'Content-Type': 'application/json',
                 "accept": "text/event-stream",
@@ -53,13 +47,12 @@ export class Mcbbs extends Chat {
             stream.read((event, data) => {
                 switch (event) {
                     case Event.done:
-                        stream.end();
                         break;
                     case Event.message:
-                        result.content = (data as MessageData).content
+                        result.content += (data as MessageData).content || '';
                         break;
                     case Event.error:
-                        result.error = (data as ErrorData).error
+                        result.error = (data as ErrorData).error;
                         break;
                 }
             }, () => {
@@ -71,33 +64,36 @@ export class Mcbbs extends Chat {
 
     public async askStream(req: ChatRequest, stream: EventStream) {
         const data: RealReq = {
-            stream: true,
-            messages: [{role: 'user', content: req.prompt}],
-            temperature: 1,
-            presence_penalty: 2,
-            model: 'gpt-3.5-turbo'
+            question: req.prompt,
+            chat_id: v4(),
+            timestamp: moment().valueOf(),
         };
         try {
-            const res = await this.client.post('/openai/v1/chat/completions', data, {
+            const res = await this.client.post('/chat_api_stream', data, {
                 responseType: 'stream',
             } as AxiosRequestConfig);
             res.data.pipe(es.split(/\r?\n\r?\n/)).pipe(es.map(async (chunk: any, cb: any) => {
                 const dataStr = chunk.replace('data: ', '');
-                if (dataStr === '[Done]') {
-                    stream.write(Event.done, dataStr);
+                if (!dataStr) {
                     return;
                 }
                 const data = parseJSON(dataStr, {} as any);
                 if (!data?.choices) {
-                    cb(null, '');
+                    stream.write(Event.error, {error: 'not found data.choices'})
+                    stream.end();
                     return;
                 }
-                const [{delta: {content = ""}}] = data.choices;
+                const [{delta: {content = ""}, finish_reason}] = data.choices;
+                if (finish_reason === 'stop') {
+                    stream.end();
+                    return;
+                }
                 stream.write(Event.message, {content});
             }))
         } catch (e: any) {
             console.error(e);
             stream.write(Event.error, {error: e.message})
+            stream.end();
         }
     }
 }
