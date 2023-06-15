@@ -100,7 +100,7 @@ export class Forefrontnew extends Chat implements BrowserUser<Account> {
     support(model: ModelType): number {
         switch (model) {
             case ModelType.GPT4:
-                return 3000;
+                return 2500;
             default:
                 return 0;
         }
@@ -198,10 +198,34 @@ export class Forefrontnew extends Chat implements BrowserUser<Account> {
     }
 
     private static async switchToGpt4(page: Page, triedTimes: number = 0) {
-        console.log('switch gpt4....')
+        if (triedTimes === 3) {
+            await page.waitForSelector('div > .absolute > .relative > .w-full:nth-child(3) > .relative')
+            await page.click('div > .absolute > .relative > .w-full:nth-child(3) > .relative');
+            return;
+        }
+        try {
+            console.log('switch gpt4....')
+            triedTimes += 1;
+            await sleep(1000);
+            await page.waitForSelector('div > .absolute > .relative > .w-full:nth-child(3) > .relative')
+            await page.click('div > .absolute > .relative > .w-full:nth-child(3) > .relative');
+            await sleep(1000);
+            await page.waitForSelector('div > .absolute > .relative > .w-full:nth-child(3) > .relative')
+            await page.click('div > .absolute > .relative > .w-full:nth-child(3) > .relative')
+            await sleep(1000);
+            await page.hover('div > .absolute > .relative > .w-full:nth-child(3) > .relative')
+
+            // click never internet
+            await page.waitForSelector('.flex > .p-1 > .relative')
+            await page.click('.flex > .p-1 > .relative')
+            console.log('switch gpt4 ok!')
+        } catch (e) {
+            console.log(e);
+            await page.reload();
+            await Forefrontnew.switchToGpt4(page, triedTimes);
+        }
         await page.waitForSelector('div > .absolute > .relative > .w-full:nth-child(3) > .relative')
         await page.click('div > .absolute > .relative > .w-full:nth-child(3) > .relative');
-        console.log('switch gpt4 ok!')
     }
 
     private async allowClipboard(browser: Browser, page: Page) {
